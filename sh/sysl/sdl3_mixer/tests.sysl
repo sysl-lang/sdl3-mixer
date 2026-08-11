@@ -2,6 +2,8 @@ module sh.sysl.sdl3_mixer
 @tests
 
 import sh.sysl.sdl3.{AUDIO_F32, AudioSpec, INIT_AUDIO, init, quit, set_hint}
+import sysl.buf.{Buf, buf}
+import sysl.slices.as_ptr
 
 // The package's own tests, against a real SDL3_mixer.
 //
@@ -86,6 +88,27 @@ raw_pcm_loads_without_a_file()
     val a = m.load_raw(pcm, AudioSpec(AUDIO_F32, 1, 8000)).expect("the raw PCM loaded")
 
     assert_eq(a.duration(), 8000i64, "eight thousand frames, which is a second at that rate")
+
+    a.destroy()
+    shut_down(m)
+
+// The shape a program that generates its own sound is actually in: the samples are floats in a
+// `Buf`, and what `load_raw` wants is the same storage read as bytes. Both steps to get there —
+// `view` and slicing a raw pointer — answer a *read-only* view, so a `load_raw` asking for a
+// writable slice could not be called this way at all. That is why its parameter is `[]const u8`.
+@test
+generated_samples_load_through_a_pointer()
+    val m = open_a_mixer()
+    var samples: Buf[f32] = buf()
+
+    for i in 0..<4000
+        samples.push(0.0)
+
+    val v = samples.view()
+    val bytes: *u8 = ptr_cast(as_ptr(v))
+    val a = m.load_raw(bytes[0..<v.len * 4], AudioSpec(AUDIO_F32, 1, 8000)).expect("the PCM loaded")
+
+    assert_eq(a.duration(), 4000i64, "four thousand float frames, read as sixteen thousand bytes")
 
     a.destroy()
     shut_down(m)

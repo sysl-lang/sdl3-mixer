@@ -4,8 +4,8 @@ SDL_mixer 3 for sysl — sound and music, mixed, looped, faded and stopped.
 
 ```
 dependencies {
-  sdl3       { git = "github.com/sysl-lang/sdl3",       version = "0.1.0" }
-  sdl3-mixer { git = "github.com/sysl-lang/sdl3-mixer", version = "0.1.0" }
+  sdl3       { git = "github.com/sysl-lang/sdl3",       version = "0.1.2" }
+  sdl3-mixer { git = "github.com/sysl-lang/sdl3-mixer", version = "0.1.1" }
 }
 ```
 
@@ -76,16 +76,31 @@ over milliseconds. It is kept rather than smoothed over.
 `remaining()` counts the **current pass** and knows nothing about looping or fade-outs, so a track
 set to loop forever still reports the tail of the pass it is on rather than something infinite.
 
+## Sound a program made itself
+
+`load_raw` takes PCM that is already decoded, which is how a program plays something it generated —
+`AudioSpec(AUDIO_F32, 1, 48000)` and a slice of the samples. SDL_mixer copies what it is handed, so
+the buffer can go the moment the call returns. The parameter is `[]const u8`, because that is what
+the C takes and because both ways of getting there — a `Buf`'s `view`, and a slice of a raw pointer
+— answer a read-only view.
+
+**`sine_wave` is a test helper and not a sound effect.** It is raw sine with no envelope, so it stops
+wherever in its cycle the length happened to land — ninety milliseconds of 262 Hz is 23.58 cycles and
+ends at about half amplitude. That step is broadband, so it is heard as a click at a pitch nothing to
+do with the note. Anything meant for a person to listen to wants an envelope that reaches zero at
+both ends, which means generating the samples and handing them to `load_raw`.
+[`sdl3-demo`](https://github.com/sysl-lang/sdl3-demo) does exactly that, in about fifteen lines.
+
 ## Tests
 
 ```
 sysl test . --include-path /opt/homebrew/include --link-path /opt/homebrew/lib
 ```
 
-Twelve tests, and **they need no sound card and no sound file**. SDL's dummy audio driver accepts a
-device and consumes what is mixed into it, and SDL_mixer supplies `MIX_CreateSineWaveAudio` — so the
-whole path, from opening a device through loading, assigning, seeking, looping and fading, runs on a
-build machine with a checkout and nothing else.
+Thirteen tests, and **they need no sound card and no sound file**. SDL's dummy audio driver accepts
+a device and consumes what is mixed into it, and SDL_mixer supplies `MIX_CreateSineWaveAudio` — so
+the whole path, from opening a device through loading, assigning, seeking, looping and fading, runs
+on a build machine with a checkout and nothing else.
 
 ## License
 

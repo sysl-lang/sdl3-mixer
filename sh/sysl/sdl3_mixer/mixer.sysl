@@ -209,8 +209,13 @@ struct Mixer
     end load_audio
 
     // Load PCM that is already in memory and already decoded — a sound a program generated, or one
-    // it unpacked from an archive of its own.
-    load_raw(self, data: []u8, spec: AudioSpec) -> Option[Audio]
+    // it unpacked from an archive of its own. SDL_mixer copies what it is handed, so the storage
+    // can go the moment this returns.
+    //
+    // The parameter is `[]const u8` because `MIX_LoadRawAudio` takes a `const void *` and reads it,
+    // and asking for a writable slice would be claiming a licence this never uses — a caller whose
+    // samples are behind a const view could not pass them at all.
+    load_raw(self, data: []const u8, spec: AudioSpec) -> Option[Audio]
         var s = spec
         val a = mix_load_raw_audio(self.handle, as_ptr(data), data.len, &s)
 
@@ -220,6 +225,13 @@ struct Mixer
     // A sine wave of a given frequency, amplitude and length in milliseconds. SDL_mixer supplies
     // this for testing, and it is what this package's own tests play — no sound file has to exist
     // for the whole mixing path to run.
+    //
+    // **It is raw sine and no envelope**, which is right for a test and audible in a program: the
+    // wave stops wherever in its cycle the length happened to land, and a step from part of full
+    // amplitude to zero is broadband — so it is heard as a click at a pitch that has nothing to do
+    // with the note. Ninety milliseconds of 262 Hz is 23.58 cycles and ends at about half
+    // amplitude. A sound meant for somebody to listen to is built with `load_raw`, under an
+    // envelope that reaches zero at both ends.
     sine_wave(self, hz: i32, amplitude: f32, ms: i64) -> Option[Audio]
         val a = mix_create_sine_wave_audio(self.handle, hz, amplitude, ms)
 
