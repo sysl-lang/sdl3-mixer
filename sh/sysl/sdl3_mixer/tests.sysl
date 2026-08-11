@@ -1,0 +1,261 @@
+module sh.sysl.sdl3_mixer
+@tests
+
+import sh.sysl.sdl3.{AUDIO_F32, AudioSpec, INIT_AUDIO, init, quit, set_hint}
+
+// The package's own tests, against a real SDL3_mixer.
+//
+// **They need no sound card and no sound file.** SDL's dummy audio driver accepts a device and
+// consumes what is mixed into it, and SDL_mixer supplies `MIX_CreateSineWaveAudio` — so the whole
+// path, from opening a device through loading, assigning, looping and fading, runs on a build
+// machine with a checkout and nothing else.
+
+// A mixer on the dummy device. Every test below starts here.
+open_a_mixer() -> Mixer
+    set_hint("SDL_AUDIO_DRIVER", "dummy")
+    assert(init(INIT_AUDIO), "SDL_Init(INIT_AUDIO)")
+    assert(mix_init(), "MIX_Init")
+    open_mixer().expect("the mixer opened on the dummy device")
+end open_a_mixer
+
+shut_down(m: Mixer)
+    m.destroy()
+    mix_quit()
+    quit()
+
+@test
+the_library_reports_itself()
+    set_hint("SDL_AUDIO_DRIVER", "dummy")
+    assert(init(INIT_AUDIO), "SDL_Init")
+    assert(mix_init(), "MIX_Init")
+    assert(mix_version() >= 3000000, "SDL_mixer 3 or better")
+
+    mix_quit()
+    quit()
+
+@test
+a_mixer_opens_and_carries_a_master_gain()
+    val m = open_a_mixer()
+
+    assert_eq(m.gain(), 1.0f32, "a mixer opens at unity")
+    assert(m.set_gain(0.25), "the master gain was set")
+    assert_eq(m.gain(), 0.25f32, "and read back")
+
+    shut_down(m)
+
+// The device format can be asked for rather than taken. A device that cannot give it resamples, so
+// this is a preference — which is why the assertion is that it opened, not that it obeyed.
+@test
+a_mixer_can_be_asked_for_a_format()
+    set_hint("SDL_AUDIO_DRIVER", "dummy")
+    assert(init(INIT_AUDIO), "SDL_Init")
+    assert(mix_init(), "MIX_Init")
+
+    val m = open_mixer_with(AudioSpec(AUDIO_F32, 2, 48000)).expect("it opened")
+
+    shut_down(m)
+
+// ---- audio ----
+
+@test
+a_sine_wave_knows_its_own_length()
+    val m = open_a_mixer()
+    val a = m.sine_wave(440, 0.5, 1000).expect("a second of A above middle C")
+
+    assert(a.duration() > 0, "it has a length")
+
+    val spec = a.format().expect("and a format")
+
+    assert(spec.freq > 0, "at some sample rate")
+    assert(spec.channels > 0, "with at least one channel")
+
+    // A second at this audio's own rate is its whole duration, which is the round trip that says
+    // the conversion is against the right sample rate rather than against a guess.
+    assert_eq(a.ms_to_frames(1000), a.duration(), "a second of it is all of it")
+    assert_eq(a.frames_to_ms(a.duration()), 1000i64, "and back again")
+
+    a.destroy()
+    shut_down(m)
+
+@test
+raw_pcm_loads_without_a_file()
+    val m = open_a_mixer()
+
+    // A second of silence, as float frames — the shape a program that generated its own sound has.
+    var pcm: []u8 = [0; 4 * 8000]
+    val a = m.load_raw(pcm, AudioSpec(AUDIO_F32, 1, 8000)).expect("the raw PCM loaded")
+
+    assert_eq(a.duration(), 8000i64, "eight thousand frames, which is a second at that rate")
+
+    a.destroy()
+    shut_down(m)
+
+@test
+a_missing_file_is_nothing()
+    val m = open_a_mixer()
+
+    m.load_audio("/no/such/sound.wav") match
+        Some(_) -> assert(false, "a file that is not there did not load")
+        None -> ()
+
+    shut_down(m)
+
+// ---- tracks ----
+
+@test
+a_track_plays_pauses_and_stops()
+    val m = open_a_mixer()
+    val a = m.sine_wave(440, 0.5, 2000).expect("two seconds")
+    val t = m.create_track().expect("a voice")
+
+    assert(t.set_audio(a), "assigned the audio")
+    assert(!t.playing(), "nothing plays until it is told to")
+
+    assert(t.play(), "started")
+    assert(t.playing(), "and it is playing")
+    assert(!t.paused(), "and not paused")
+
+    assert(t.pause(), "paused")
+    assert(t.paused(), "and it is")
+    assert(!t.playing(), "and a paused track does not count as playing, which is SDL_mixer's reading")
+
+    assert(t.resume(), "resumed")
+    assert(!t.paused(), "and it is not paused any more")
+
+    assert(t.stop(), "stopped")
+    assert(!t.playing(), "and it has stopped")
+
+    t.destroy()
+    a.destroy()
+    shut_down(m)
+
+// **How a play begins is said at the play**, and this is the test that pins why: `set_loops` alters
+// a track that is *already* playing and does nothing to a stopped one, so a binding that offered
+// only that would let a caller ask for a loop and get one play.
+@test
+looping_is_asked_for_at_the_play()
+    val m = open_a_mixer()
+    val a = m.sine_wave(440, 0.5, 200).expect("a fifth of a second")
+    val t = m.create_track().expect("a voice")
+
+    assert(t.set_audio(a), "assigned")
+    assert_eq(t.loops(), 0i32, "a stopped track has no loops pending")
+
+    // The trap, stated as a test: this call succeeds and changes nothing.
+    assert(t.set_loops(3), "SDL_mixer accepts it")
+    assert_eq(t.loops(), 0i32, "and it did nothing, because the track is stopped")
+
+    assert(t.play(3), "so the loop count goes to the play instead")
+    assert_eq(t.loops(), 3i32, "and now three are pending")
+
+    // And *that* is when `set_loops` becomes useful: cutting a looping track short.
+    assert(t.set_loops(1), "one more pass and stop")
+    assert_eq(t.loops(), 1i32, "which took effect this time")
+
+    t.stop()
+    t.destroy()
+
+    val forever = m.create_track().expect("another voice")
+
+    assert(forever.set_audio(a), "assigned")
+    assert(forever.play(LOOP_FOREVER), "started, endlessly")
+    assert_eq(forever.loops(), LOOP_FOREVER, "which reports as -1 rather than as an error")
+    // `remaining` counts the current pass and knows nothing about looping, which is worth pinning
+    // because the plausible reading — "a track that never ends has infinite time left" — is wrong.
+    assert(forever.remaining() > 0, "and it reports the tail of the pass it is on, not the loop")
+
+    forever.stop()
+    forever.destroy()
+    a.destroy()
+    shut_down(m)
+
+@test
+a_track_carries_a_gain_and_a_pitch()
+    val m = open_a_mixer()
+    val t = m.create_track().expect("a voice")
+
+    assert_eq(t.gain(), 1.0f32, "a track starts at unity")
+    assert(t.set_gain(0.5), "half volume")
+    assert_eq(t.gain(), 0.5f32, "which came back")
+
+    assert_eq(t.frequency_ratio(), 1.0f32, "and at its own pitch")
+    assert(t.set_frequency_ratio(2.0), "an octave up")
+    assert_eq(t.frequency_ratio(), 2.0f32, "which came back")
+
+    t.destroy()
+    shut_down(m)
+
+@test
+a_track_can_be_sought()
+    val m = open_a_mixer()
+    val a = m.sine_wave(440, 0.5, 2000).expect("two seconds")
+    val t = m.create_track().expect("a voice")
+
+    assert(t.set_audio(a), "assigned")
+
+    val half = t.ms_to_frames(1000)
+
+    assert(half > 0, "a second is some number of frames at the track's rate")
+    assert_eq(t.frames_to_ms(half), 1000i64, "and converts back")
+
+    // **A position is a property of a play**, so the track has to be playing to have one — a
+    // stopped track reports nothing to seek within and nothing remaining.
+    assert(t.play(), "started")
+    assert(t.set_position(half), "sought to the middle")
+    assert_eq(t.position(), half, "and that is where it is")
+
+    val left = t.remaining()
+
+    assert(left > 0, "with something still to play")
+    assert(left < a.duration(), "but less than the whole thing, since half of it is behind us")
+
+    t.stop()
+
+    t.destroy()
+    a.destroy()
+    shut_down(m)
+
+// Several voices on one `Audio` at once, which is what a game does with a sound effect and is the
+// case a design with one voice per sound gets wrong.
+@test
+one_sound_plays_on_several_tracks()
+    val m = open_a_mixer()
+    val a = m.sine_wave(440, 0.5, 2000).expect("two seconds")
+    val first = m.create_track().expect("one voice")
+    val second = m.create_track().expect("another")
+
+    assert(first.set_audio(a), "both take the same audio")
+    assert(second.set_audio(a), "both take the same audio")
+    assert(first.play(), "and both play")
+    assert(second.play(), "and both play")
+
+    assert(first.playing(), "at once")
+    assert(second.playing(), "at once")
+
+    assert(m.pause_all(), "everything pauses together")
+    assert(first.paused(), "the first")
+    assert(second.paused(), "and the second")
+
+    assert(m.resume_all(), "and resumes")
+    assert(!first.paused(), "the first")
+    assert(!second.paused(), "and the second")
+
+    assert(m.stop_all(), "and stops")
+    assert(!first.playing(), "the first")
+    assert(!second.playing(), "and the second")
+
+    first.destroy()
+    second.destroy()
+    a.destroy()
+    shut_down(m)
+
+// Fire and forget, on a track SDL_mixer makes and disposes of itself — what a UI click is.
+@test
+a_sound_plays_with_no_track_to_manage()
+    val m = open_a_mixer()
+    val a = m.sine_wave(880, 0.3, 100).expect("a blip")
+
+    assert(m.play(a), "it played, and there is nothing to clean up but the audio")
+
+    a.destroy()
+    shut_down(m)

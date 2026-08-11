@@ -1,0 +1,30 @@
+// SDL_mixer 3 — sound and music, mixed, for sysl.
+//
+//     dependencies {
+//       sdl3-mixer { git = "github.com/sysl-lang/sdl3-mixer", version = "0.1.0" }
+//     }
+//
+// **SDL3 and SDL3_mixer both have to be installed** — `brew install sdl3_ttf` pulls both — and a
+// build needs the prefix on the command line:
+//
+//     sysl run prog.sysl --include-path /opt/homebrew/include --link-path /opt/homebrew/lib
+//
+// This is a separate package from `sdl3` rather than a module inside it, and the reason is
+// mechanical: a link directive is never pruned, so a program that only drew rectangles would still
+// be handed `-lSDL3_mixer` and would not link on a machine without it.
+
+package {
+  name    = "sdl3-mixer"
+  version = "0.1.0"
+}
+
+// The core binding, for `Color`, `Surface`, `Renderer` and `Texture`. It is fetched by the
+// coordinate below, so nothing has to be checked out beside this repository.
+dependencies {
+  sdl3 { git = "github.com/sysl-lang/sdl3", version = "0.1.0" }
+}
+
+requires {
+  alloc = true
+  posix = true
+}
