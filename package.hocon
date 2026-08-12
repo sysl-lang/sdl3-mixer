@@ -25,6 +25,6 @@ dependencies {
 }
 
 requires {
-  alloc = true
+  heap  = true
   posix = true
 }
