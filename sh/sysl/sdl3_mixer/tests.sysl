@@ -1,7 +1,8 @@
 module sh.sysl.sdl3_mixer
 @tests
 
-import sh.sysl.sdl3.{AUDIO_F32, AudioSpec, INIT_AUDIO, init, quit, set_hint}
+import sh.sysl.sdl3.{AudioFormat, init, quit, set_hint}
+import sh.sysl.sdl3.c.{AudioSpec, INIT_AUDIO}
 import sysl.buf.{Buf, buf}
 import sysl.slices.as_ptr
 
@@ -13,24 +14,27 @@ import sysl.slices.as_ptr
 // machine with a checkout and nothing else.
 
 // A mixer on the dummy device. Every test below starts here.
-open_a_mixer() -> Mixer
+//
+// **No test that holds a mixer calls `mix_quit` or `quit`.** SDL_mixer frees everything it made
+// when it shuts down, and a `&Mixer` still alive afterwards would free the device a second time
+// when its last reference went — which is the library's rule rather than this binding's. Handles go
+// at the end of the test that made them, so the two lifecycle tests may quit freely.
+open_a_mixer() -> &Mixer
     set_hint("SDL_AUDIO_DRIVER", "dummy")
     assert(init(INIT_AUDIO), "SDL_Init(INIT_AUDIO)")
     assert(mix_init(), "MIX_Init")
     open_mixer().expect("the mixer opened on the dummy device")
 end open_a_mixer
 
-shut_down(m: Mixer)
-    m.destroy()
-    mix_quit()
-    quit()
-
 @test
 the_library_reports_itself()
     set_hint("SDL_AUDIO_DRIVER", "dummy")
     assert(init(INIT_AUDIO), "SDL_Init")
     assert(mix_init(), "MIX_Init")
-    assert(mix_version() >= 3000000, "SDL_mixer 3 or better")
+    val (major, minor, patch) = mix_version()
+
+    assert(major >= 3, "SDL_mixer 3 or better")
+    assert(minor >= 0 && patch >= 0, "with the other two components unpacked as numbers")
 
     mix_quit()
     quit()
@@ -43,7 +47,6 @@ a_mixer_opens_and_carries_a_master_gain()
     assert(m.set_gain(0.25), "the master gain was set")
     assert_eq(m.gain(), 0.25f32, "and read back")
 
-    shut_down(m)
 
 // The device format can be asked for rather than taken. A device that cannot give it resamples, so
 // this is a preference — which is why the assertion is that it opened, not that it obeyed.
@@ -53,9 +56,8 @@ a_mixer_can_be_asked_for_a_format()
     assert(init(INIT_AUDIO), "SDL_Init")
     assert(mix_init(), "MIX_Init")
 
-    val m = open_mixer_with(AudioSpec(AUDIO_F32, 2, 48000)).expect("it opened")
+    val m = open_mixer_with(AudioSpec(AudioFormat.F32.code(), 2, 48000)).expect("it opened")
 
-    shut_down(m)
 
 // ---- audio ----
 
@@ -76,8 +78,6 @@ a_sine_wave_knows_its_own_length()
     assert_eq(a.ms_to_frames(1000), a.duration(), "a second of it is all of it")
     assert_eq(a.frames_to_ms(a.duration()), 1000i64, "and back again")
 
-    a.destroy()
-    shut_down(m)
 
 @test
 raw_pcm_loads_without_a_file()
@@ -85,12 +85,10 @@ raw_pcm_loads_without_a_file()
 
     // A second of silence, as float frames — the shape a program that generated its own sound has.
     var pcm: []u8 = [0; 4 * 8000]
-    val a = m.load_raw(pcm, AudioSpec(AUDIO_F32, 1, 8000)).expect("the raw PCM loaded")
+    val a = m.load_raw(pcm, AudioSpec(AudioFormat.F32.code(), 1, 8000)).expect("the raw PCM loaded")
 
     assert_eq(a.duration(), 8000i64, "eight thousand frames, which is a second at that rate")
 
-    a.destroy()
-    shut_down(m)
 
 // The shape a program that generates its own sound is actually in: the samples are floats in a
 // `Buf`, and what `load_raw` wants is the same storage read as bytes. Both steps to get there —
@@ -106,12 +104,10 @@ generated_samples_load_through_a_pointer()
 
     val v = samples.view()
     val bytes: *u8 = ptr_cast(as_ptr(v))
-    val a = m.load_raw(bytes[0..<v.len * 4], AudioSpec(AUDIO_F32, 1, 8000)).expect("the PCM loaded")
+    val a = m.load_raw(bytes[0..<v.len * 4], AudioSpec(AudioFormat.F32.code(), 1, 8000)).expect("the PCM loaded")
 
     assert_eq(a.duration(), 4000i64, "four thousand float frames, read as sixteen thousand bytes")
 
-    a.destroy()
-    shut_down(m)
 
 @test
 a_missing_file_is_nothing()
@@ -121,7 +117,6 @@ a_missing_file_is_nothing()
         Some(_) -> assert(false, "a file that is not there did not load")
         None -> ()
 
-    shut_down(m)
 
 // ---- tracks ----
 
@@ -148,9 +143,6 @@ a_track_plays_pauses_and_stops()
     assert(t.stop(), "stopped")
     assert(!t.playing(), "and it has stopped")
 
-    t.destroy()
-    a.destroy()
-    shut_down(m)
 
 // **How a play begins is said at the play**, and this is the test that pins why: `set_loops` alters
 // a track that is *already* playing and does nothing to a stopped one, so a binding that offered
@@ -176,7 +168,6 @@ looping_is_asked_for_at_the_play()
     assert_eq(t.loops(), 1i32, "which took effect this time")
 
     t.stop()
-    t.destroy()
 
     val forever = m.create_track().expect("another voice")
 
@@ -188,9 +179,6 @@ looping_is_asked_for_at_the_play()
     assert(forever.remaining() > 0, "and it reports the tail of the pass it is on, not the loop")
 
     forever.stop()
-    forever.destroy()
-    a.destroy()
-    shut_down(m)
 
 @test
 a_track_carries_a_gain_and_a_pitch()
@@ -205,8 +193,6 @@ a_track_carries_a_gain_and_a_pitch()
     assert(t.set_frequency_ratio(2.0), "an octave up")
     assert_eq(t.frequency_ratio(), 2.0f32, "which came back")
 
-    t.destroy()
-    shut_down(m)
 
 @test
 a_track_can_be_sought()
@@ -234,9 +220,6 @@ a_track_can_be_sought()
 
     t.stop()
 
-    t.destroy()
-    a.destroy()
-    shut_down(m)
 
 // Several voices on one `Audio` at once, which is what a game does with a sound effect and is the
 // case a design with one voice per sound gets wrong.
@@ -267,10 +250,6 @@ one_sound_plays_on_several_tracks()
     assert(!first.playing(), "the first")
     assert(!second.playing(), "and the second")
 
-    first.destroy()
-    second.destroy()
-    a.destroy()
-    shut_down(m)
 
 // Fire and forget, on a track SDL_mixer makes and disposes of itself — what a UI click is.
 @test
@@ -280,5 +259,3 @@ a_sound_plays_with_no_track_to_manage()
 
     assert(m.play(a), "it played, and there is nothing to clean up but the audio")
 
-    a.destroy()
-    shut_down(m)

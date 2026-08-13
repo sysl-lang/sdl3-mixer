@@ -1,10 +1,10 @@
 module sh.sysl.sdl3_mixer
-@link("SDL3_mixer")
 
+import sh.sysl.sdl3_mixer.c
 import sysl.text.cstring
 import sysl.slices.as_ptr
-import sh.sysl.sdl3.{AUDIO_DEVICE_DEFAULT_PLAYBACK, AudioSpec, create_properties, destroy_properties,
-                     set_number_property}
+import sh.sysl.sdl3.{create_properties, destroy_properties, set_number_property}
+import sh.sysl.sdl3.c.{AUDIO_DEVICE_DEFAULT_PLAYBACK, AudioSpec}
 
 // SDL_mixer 3 — sound and music, mixed, looped, faded and stopped.
 //
@@ -29,93 +29,58 @@ import sh.sysl.sdl3.{AUDIO_DEVICE_DEFAULT_PLAYBACK, AudioSpec, create_properties
 // could not see. `Audio.ms_to_frames` and `Track.ms_to_frames` do the conversion where it is wanted,
 // against that audio's own sample rate.
 
-extern "MIX_Init" mix_init_raw() -> bool
-extern "MIX_Quit" mix_quit_raw()
-extern "MIX_Version" mix_version_raw() -> i32
-
-extern "MIX_CreateMixerDevice" mix_create_mixer_device(devid: u32, spec: *AudioSpec) -> *u8
-extern "MIX_DestroyMixer" mix_destroy_mixer(mixer: *u8)
-extern "MIX_GetMixerGain" mix_get_mixer_gain(mixer: *u8) -> f32
-extern "MIX_SetMixerGain" mix_set_mixer_gain(mixer: *u8, gain: f32) -> bool
-extern "MIX_StopAllTracks" mix_stop_all_tracks(mixer: *u8, fade_out_ms: i64) -> bool
-extern "MIX_PauseAllTracks" mix_pause_all_tracks(mixer: *u8) -> bool
-extern "MIX_ResumeAllTracks" mix_resume_all_tracks(mixer: *u8) -> bool
-
-extern "MIX_LoadAudio" mix_load_audio(mixer: *u8, path: *u8, predecode: bool) -> *u8
-extern "MIX_LoadRawAudio" mix_load_raw_audio(mixer: *u8, data: *u8, len: usize, spec: *AudioSpec) -> *u8
-extern "MIX_CreateSineWaveAudio" mix_create_sine_wave_audio(mixer: *u8, hz: i32, amplitude: f32, ms: i64) -> *u8
-extern "MIX_DestroyAudio" mix_destroy_audio(audio: *u8)
-extern "MIX_GetAudioDuration" mix_get_audio_duration(audio: *u8) -> i64
-extern "MIX_GetAudioFormat" mix_get_audio_format(audio: *u8, spec: *AudioSpec) -> bool
-extern "MIX_AudioMSToFrames" mix_audio_ms_to_frames(audio: *u8, ms: i64) -> i64
-extern "MIX_AudioFramesToMS" mix_audio_frames_to_ms(audio: *u8, frames: i64) -> i64
-
-extern "MIX_PlayAudio" mix_play_audio(mixer: *u8, audio: *u8) -> bool
-
-extern "MIX_CreateTrack" mix_create_track(mixer: *u8) -> *u8
-extern "MIX_DestroyTrack" mix_destroy_track(track: *u8)
-extern "MIX_SetTrackAudio" mix_set_track_audio(track: *u8, audio: *u8) -> bool
-extern "MIX_PlayTrack" mix_play_track(track: *u8, options: u32) -> bool
-extern "MIX_StopTrack" mix_stop_track(track: *u8, fade_out_frames: i64) -> bool
-extern "MIX_PauseTrack" mix_pause_track(track: *u8) -> bool
-extern "MIX_ResumeTrack" mix_resume_track(track: *u8) -> bool
-extern "MIX_TrackPlaying" mix_track_playing(track: *u8) -> bool
-extern "MIX_TrackPaused" mix_track_paused(track: *u8) -> bool
-extern "MIX_SetTrackGain" mix_set_track_gain(track: *u8, gain: f32) -> bool
-extern "MIX_GetTrackGain" mix_get_track_gain(track: *u8) -> f32
-extern "MIX_SetTrackLoops" mix_set_track_loops(track: *u8, loops: i32) -> bool
-extern "MIX_GetTrackLoops" mix_get_track_loops(track: *u8) -> i32
-extern "MIX_SetTrackFrequencyRatio" mix_set_track_frequency_ratio(track: *u8, ratio: f32) -> bool
-extern "MIX_GetTrackFrequencyRatio" mix_get_track_frequency_ratio(track: *u8) -> f32
-extern "MIX_SetTrackPlaybackPosition" mix_set_track_playback_position(track: *u8, frames: i64) -> bool
-extern "MIX_GetTrackPlaybackPosition" mix_get_track_playback_position(track: *u8) -> i64
-extern "MIX_GetTrackRemaining" mix_get_track_remaining(track: *u8) -> i64
-extern "MIX_TrackMSToFrames" mix_track_ms_to_frames(track: *u8, ms: i64) -> i64
-extern "MIX_TrackFramesToMS" mix_track_frames_to_ms(track: *u8, frames: i64) -> i64
-
 // Pass to `Track.set_loops` to loop for as long as nothing stops it.
 const LOOP_FOREVER: i32 = -1
 
 // Bring SDL_mixer up. Call it after SDL itself is initialised; it opens no device of its own, which
 // `open_mixer` does.
-mix_init() -> bool = mix_init_raw()
+mix_init() -> bool = c.init()
 
-mix_quit() = mix_quit_raw()
+mix_quit() = c.quit()
 
-// The SDL_mixer being linked, as `major * 1000000 + minor * 1000 + patch`.
-mix_version() -> i32 = mix_version_raw()
+// The SDL_mixer being linked, as `(major, minor, patch)`.
+mix_version() -> (int, int, int)
+    val v = int(c.version())
+
+    (v / 1000000, (v / 1000) % 1000, v % 1000)
+end mix_version
 
 // A loaded sound. One type covers a two-second effect and an hour of music — the difference is
 // whether it was predecoded — and one may be assigned to several tracks at once.
 struct Audio
-    handle: *u8
+    handle: *c.Audio
 
     // How long it runs, in **sample frames**. Negative where the format will not say without
     // decoding the whole thing, which some streamed formats do not.
-    duration(self) -> i64 = mix_get_audio_duration(self.handle)
+    duration(&self) -> i64 = c.get_audio_duration(self.handle)
 
     // The format it decodes to.
-    format(self) -> Option[AudioSpec]
+    format(&self) -> Option[AudioSpec]
         var spec = AudioSpec(0, 0, 0)
 
-        if mix_get_audio_format(self.handle, &spec) then Some(spec) else None
+        if c.get_audio_format(self.handle, &spec) then Some(spec) else None
     end format
 
     // Milliseconds to frames at *this* audio's sample rate, which is the conversion anything taking
     // a fade or a position needs.
-    ms_to_frames(self, ms: i64) -> i64 = mix_audio_ms_to_frames(self.handle, ms)
+    ms_to_frames(&self, ms: i64) -> i64 = c.audio_ms_to_frames(self.handle, ms)
 
-    frames_to_ms(self, frames: i64) -> i64 = mix_audio_frames_to_ms(self.handle, frames)
+    frames_to_ms(&self, frames: i64) -> i64 = c.audio_frames_to_ms(self.handle, frames)
 
-    destroy(self) = mix_destroy_audio(self.handle)
 end Audio
+
+// The sound goes when the last reference to it does. A track holding it does *not* keep it alive —
+// SDL_mixer takes no count of its own — so an `Audio` assigned to a track has to outlive the track,
+// which is what holding the reference does.
+impl Drop for Audio
+    drop(self) = c.destroy_audio(self.handle)
 
 // A playback voice. Assign an `Audio`, then play, loop, pause, fade and stop it.
 struct Track
-    handle: *u8
+    handle: *c.Track
 
     // What this track will play. Setting it on a playing track replaces what is playing.
-    set_audio(self, audio: Audio) -> bool = mix_set_track_audio(self.handle, audio.handle)
+    set_audio(&self, audio: &Audio) -> bool = c.set_track_audio(self.handle, audio.handle)
 
     // Start playing.
     //
@@ -127,33 +92,38 @@ struct Track
     //
     // `loops` is the number of repeats **after** the first play: 0 plays once, `LOOP_FOREVER` never
     // stops. The defaults make the bag unnecessary, so an ordinary `play()` builds nothing.
-    play(self, loops: i32 = 0, fade_in_frames: i64 = 0, start_frame: i64 = 0) -> bool
-        if loops == 0 && fade_in_frames == 0 && start_frame == 0 then return mix_play_track(self.handle, 0)
+    play(&self, loops: i32 = 0, fade_in_frames: i64 = 0, start_frame: i64 = 0) -> bool
+        if loops == 0 && fade_in_frames == 0 && start_frame == 0 then return c.play_track(self.handle, 0)
 
         val props = create_properties()
 
         if props == 0 then return false
 
+        // **These three names are the one hand-copied thing in this package.** SDL_mixer declares
+        // them as `#define`d *strings* — `MIX_PROP_PLAY_LOOPS_NUMBER` is `"SDL_mixer.play.loops"` —
+        // and `15 §7` declines a string from C on purpose, so `c const` cannot ask for them the way
+        // it asks for every number elsewhere in the org. They were read out of `SDL_mixer.h` rather
+        // than remembered, and a name that is wrong here is a property SDL_mixer silently ignores.
         if loops != 0 then set_number_property(props, "SDL_mixer.play.loops", i64(loops))
         if fade_in_frames != 0 then set_number_property(props, "SDL_mixer.play.fade_in_frames", fade_in_frames)
         if start_frame != 0 then set_number_property(props, "SDL_mixer.play.start_frame", start_frame)
 
-        val ok = mix_play_track(self.handle, props)
+        val ok = c.play_track(self.handle, props)
 
         destroy_properties(props)
         ok
     end play
 
     // Stop, optionally fading out over this many **frames**. Zero stops at once.
-    stop(self, fade_out_frames: i64 = 0) -> bool = mix_stop_track(self.handle, fade_out_frames)
+    stop(&self, fade_out_frames: i64 = 0) -> bool = c.stop_track(self.handle, fade_out_frames)
 
-    pause(self) -> bool = mix_pause_track(self.handle)
+    pause(&self) -> bool = c.pause_track(self.handle)
 
-    resume(self) -> bool = mix_resume_track(self.handle)
+    resume(&self) -> bool = c.resume_track(self.handle)
 
-    playing(self) -> bool = mix_track_playing(self.handle)
+    playing(&self) -> bool = c.track_playing(self.handle)
 
-    paused(self) -> bool = mix_track_paused(self.handle)
+    paused(&self) -> bool = c.track_paused(self.handle)
 
     // Change how many repeats are **left** on a track that is already playing — turning a looping
     // piece of music into one that will stop at the end of this pass, say.
@@ -161,49 +131,52 @@ struct Track
     // **It does nothing to a stopped track**, which is SDL_mixer's own rule and the reason `play`
     // takes a `loops` argument at all: starting a track replaces this value with whatever the play
     // asked for.
-    set_loops(self, loops: i32) -> bool = mix_set_track_loops(self.handle, loops)
+    set_loops(&self, loops: i32) -> bool = c.set_track_loops(self.handle, loops)
 
     // How many repeats are still pending. Zero for a track on its last pass **and** for one that is
     // stopped — SDL_mixer does not distinguish those — and -1 for one looping forever.
-    loops(self) -> i32 = mix_get_track_loops(self.handle)
+    loops(&self) -> i32 = c.get_track_loops(self.handle)
 
     // Per-track gain: 1.0 is unity, 0.0 silence, above 1.0 amplifies and may clip.
-    set_gain(self, gain: f32) -> bool = mix_set_track_gain(self.handle, gain)
+    set_gain(&self, gain: f32) -> bool = c.set_track_gain(self.handle, gain)
 
-    gain(self) -> f32 = mix_get_track_gain(self.handle)
+    gain(&self) -> f32 = c.get_track_gain(self.handle)
 
     // Resample this track as it plays: 2.0 is an octave up and twice the speed, 0.5 an octave down.
     // What a game varies to keep a repeated effect from sounding repeated.
-    set_frequency_ratio(self, ratio: f32) -> bool = mix_set_track_frequency_ratio(self.handle, ratio)
+    set_frequency_ratio(&self, ratio: f32) -> bool = c.set_track_frequency_ratio(self.handle, ratio)
 
-    frequency_ratio(self) -> f32 = mix_get_track_frequency_ratio(self.handle)
+    frequency_ratio(&self) -> f32 = c.get_track_frequency_ratio(self.handle)
 
     // Seek, in frames.
-    set_position(self, frames: i64) -> bool = mix_set_track_playback_position(self.handle, frames)
+    set_position(&self, frames: i64) -> bool = c.set_track_playback_position(self.handle, frames)
 
-    position(self) -> i64 = mix_get_track_playback_position(self.handle)
+    position(&self) -> i64 = c.get_track_playback_position(self.handle)
 
     // Frames left in the **current pass**. It does not account for looping or for a fade-out, so a
     // track set to loop forever still reports the tail of the pass it is on rather than something
     // infinite. Zero for a stopped track, and -1 where the duration is not known at all.
-    remaining(self) -> i64 = mix_get_track_remaining(self.handle)
+    remaining(&self) -> i64 = c.get_track_remaining(self.handle)
 
-    ms_to_frames(self, ms: i64) -> i64 = mix_track_ms_to_frames(self.handle, ms)
+    ms_to_frames(&self, ms: i64) -> i64 = c.track_ms_to_frames(self.handle, ms)
 
-    frames_to_ms(self, frames: i64) -> i64 = mix_track_frames_to_ms(self.handle, frames)
+    frames_to_ms(&self, frames: i64) -> i64 = c.track_frames_to_ms(self.handle, frames)
 
-    destroy(self) = mix_destroy_track(self.handle)
 end Track
+
+// The voice goes when the last reference to it does, and stops whatever it was playing.
+impl Drop for Track
+    drop(self) = c.destroy_track(self.handle)
 
 // An open audio device that mixes.
 struct Mixer
-    handle: *u8
+    handle: *c.Mixer
 
     // Load a sound or music file. `predecode` decodes it fully up front, which is right for a short
     // effect played often and wrong for an hour of music on a small machine.
-    load_audio(self, path: string, predecode: bool = true) -> Option[Audio]
+    load_audio(&self, path: string, predecode: bool = true) -> Option[&Audio]
         val p = cstring(path)
-        val a = mix_load_audio(self.handle, p.ptr, predecode)
+        val a = c.load_audio(self.handle, p.ptr, predecode)
 
         if a == null then None else Some(Audio(a))
     end load_audio
@@ -215,9 +188,9 @@ struct Mixer
     // The parameter is `[]const u8` because `MIX_LoadRawAudio` takes a `const void *` and reads it,
     // and asking for a writable slice would be claiming a licence this never uses — a caller whose
     // samples are behind a const view could not pass them at all.
-    load_raw(self, data: []const u8, spec: AudioSpec) -> Option[Audio]
+    load_raw(&self, data: []const u8, spec: AudioSpec) -> Option[&Audio]
         var s = spec
-        val a = mix_load_raw_audio(self.handle, as_ptr(data), data.len, &s)
+        val a = c.load_raw_audio(self.handle, as_ptr(data), data.len, &s)
 
         if a == null then None else Some(Audio(a))
     end load_raw
@@ -232,52 +205,56 @@ struct Mixer
     // with the note. Ninety milliseconds of 262 Hz is 23.58 cycles and ends at about half
     // amplitude. A sound meant for somebody to listen to is built with `load_raw`, under an
     // envelope that reaches zero at both ends.
-    sine_wave(self, hz: i32, amplitude: f32, ms: i64) -> Option[Audio]
-        val a = mix_create_sine_wave_audio(self.handle, hz, amplitude, ms)
+    sine_wave(&self, hz: i32, amplitude: f32, ms: i64) -> Option[&Audio]
+        val a = c.create_sine_wave_audio(self.handle, hz, amplitude, ms)
 
         if a == null then None else Some(Audio(a))
     end sine_wave
 
     // A playback voice on this mixer.
-    create_track(self) -> Option[Track]
-        val t = mix_create_track(self.handle)
+    create_track(&self) -> Option[&Track]
+        val t = c.create_track(self.handle)
 
         if t == null then None else Some(Track(t))
     end create_track
 
     // Fire and forget: play a sound once on a track SDL_mixer makes and disposes of itself. For a
     // UI click, where nothing is going to want to stop it.
-    play(self, audio: Audio) -> bool = mix_play_audio(self.handle, audio.handle)
+    play(&self, audio: &Audio) -> bool = c.play_audio(self.handle, audio.handle)
 
     // The master gain, applied to everything this mixer produces.
-    gain(self) -> f32 = mix_get_mixer_gain(self.handle)
+    gain(&self) -> f32 = c.get_mixer_gain(self.handle)
 
-    set_gain(self, gain: f32) -> bool = mix_set_mixer_gain(self.handle, gain)
+    set_gain(&self, gain: f32) -> bool = c.set_mixer_gain(self.handle, gain)
 
     // Stop everything, optionally fading out over this many **milliseconds** — note that this one
     // is in milliseconds while `Track.stop` is in frames, which is SDL_mixer's own asymmetry and is
     // kept rather than smoothed over.
-    stop_all(self, fade_out_ms: i64 = 0) -> bool = mix_stop_all_tracks(self.handle, fade_out_ms)
+    stop_all(&self, fade_out_ms: i64 = 0) -> bool = c.stop_all_tracks(self.handle, fade_out_ms)
 
-    pause_all(self) -> bool = mix_pause_all_tracks(self.handle)
+    pause_all(&self) -> bool = c.pause_all_tracks(self.handle)
 
-    resume_all(self) -> bool = mix_resume_all_tracks(self.handle)
-
-    destroy(self) = mix_destroy_mixer(self.handle)
+    resume_all(&self) -> bool = c.resume_all_tracks(self.handle)
 end Mixer
 
+// The device closes when the last reference to the mixer goes. **A mixer must outlive the tracks
+// and sounds made from it**, which is SDL_mixer's rule rather than this one's — so a program keeps
+// the mixer for as long as it keeps anything it made.
+impl Drop for Mixer
+    drop(self) = c.destroy_mixer(self.handle)
+
 // Open the system's default playback device, in whatever format it prefers.
-open_mixer() -> Option[Mixer]
-    val m = mix_create_mixer_device(AUDIO_DEVICE_DEFAULT_PLAYBACK, null)
+open_mixer() -> Option[&Mixer]
+    val m = c.create_mixer_device(AUDIO_DEVICE_DEFAULT_PLAYBACK, null)
 
     if m == null then None else Some(Mixer(m))
 end open_mixer
 
 // Open the default device asking for a particular format. A device that cannot give it resamples
 // rather than refusing, so this is a preference and not a guarantee.
-open_mixer_with(spec: AudioSpec) -> Option[Mixer]
+open_mixer_with(spec: AudioSpec) -> Option[&Mixer]
     var s = spec
-    val m = mix_create_mixer_device(AUDIO_DEVICE_DEFAULT_PLAYBACK, &s)
+    val m = c.create_mixer_device(AUDIO_DEVICE_DEFAULT_PLAYBACK, &s)
 
     if m == null then None else Some(Mixer(m))
 end open_mixer_with

@@ -4,8 +4,8 @@ SDL_mixer 3 for sysl — sound and music, mixed, looped, faded and stopped.
 
 ```
 dependencies {
-  sdl3       { git = "github.com/sysl-lang/sdl3",       version = "0.1.2" }
-  sdl3-mixer { git = "github.com/sysl-lang/sdl3-mixer", version = "0.1.1" }
+  sdl3       { git = "github.com/sysl-lang/sdl3",       version = "0.2.0" }
+  sdl3-mixer { git = "github.com/sysl-lang/sdl3-mixer", version = "0.2.0" }
 }
 ```
 
@@ -33,11 +33,29 @@ main()
 
 ```
 brew install sdl3_mixer                 # pulls sdl3 with it
-sysl run prog.sysl --include-path /opt/homebrew/include --link-path /opt/homebrew/lib
+sysl run prog.sysl --include-path sdl3=/opt/homebrew/include --link-path /opt/homebrew/lib
 ```
 
 The two flags are deliberate — see [`sdl3`](https://github.com/sysl-lang/sdl3)'s README, which also
-says why this is a separate package rather than a module inside that one.
+says why this is a separate package rather than a module inside that one. The include path is named
+`sdl3=` because it answers *that* package's header requirement; this one declares none of its own.
+
+## Two layers, and handles that own themselves
+
+`sh.sysl.sdl3_mixer.c` holds everything that is C — the link directive, the three opaque handles and
+the thirty-nine declarations. `sh.sysl.sdl3_mixer` is what an application imports.
+
+A `Mixer`, an `Audio` and a `Track` are each a `&T` with an `impl Drop`, so `destroy` is not part of
+this API. **A mixer must outlive what was made from it, and an `Audio` must outlive the tracks
+playing it** — SDL_mixer takes no reference count of its own, so holding the reference is what keeps
+them in the right order.
+
+**There is no `c const` block here, and one thing would want to be in it.** SDL_mixer's playback
+options are `#define`d *strings* — `MIX_PROP_PLAY_LOOPS_NUMBER` is `"SDL_mixer.play.loops"` — and
+`design/15 §7` declines a string from C deliberately, since it would have to be written with two
+quotings for one value. So those three names are written out and were read out of the header rather
+than remembered; a name that is wrong there is a property SDL_mixer silently ignores. `LOOP_FOREVER`
+is not a macro at all — the `-1` is documented prose — so there is nothing to ask for there either.
 
 ## The shape, which is not SDL2_mixer's
 
@@ -94,7 +112,7 @@ both ends, which means generating the samples and handing them to `load_raw`.
 ## Tests
 
 ```
-sysl test . --include-path /opt/homebrew/include --link-path /opt/homebrew/lib
+sysl test . --include-path sdl3=/opt/homebrew/include --link-path /opt/homebrew/lib
 ```
 
 Thirteen tests, and **they need no sound card and no sound file**. SDL's dummy audio driver accepts

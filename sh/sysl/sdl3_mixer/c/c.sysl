@@ -1,0 +1,88 @@
+// SDL_mixer 3, declared verbatim.
+//
+// **Everything that is C lives in this directory** — this one file of declarations over the library
+// the machine has. Nothing here is meant to be called by a program: every name and every convention
+// is C's, so a mixer is a pointer, a length is a count of sample frames, and how a play begins is a
+// bag of properties keyed by string. The module above this one turns those into sysl and is what an
+// application imports.
+//
+// The split keeps two jobs apart. This one has to be **faithful** — a signature that disagrees with
+// the header links perfectly and corrupts the call at run time — and the other one has to be
+// **pleasant**, which is a different question.
+//
+// **There is no `c const` block here, and one thing would want to be in it.** SDL_mixer's playback
+// options are `#define`d *strings* — `MIX_PROP_PLAY_LOOPS_NUMBER` is `"SDL_mixer.play.loops"` — and
+// `15 §7` declines a string from C deliberately, since it would have to be written with two
+// quotings for one value. So those three names are written out in the module above, checked against
+// the header by hand, and are the one hand-copied thing in this package. `MIX_LOOP_FOREVER` does
+// not exist at all: the `-1` is documented prose rather than a macro, so there is nothing to ask
+// for there either.
+
+module sh.sysl.sdl3_mixer.c
+@link("SDL3_mixer")
+
+import sh.sysl.sdl3.c.AudioSpec
+
+// ## The handles
+//
+// SDL_mixer allocates each of these and SDL_mixer frees it; nothing outside the library knows a
+// size. An `opaque struct` is that claim, and it is what stops `destroy_track` accepting a mixer.
+
+opaque struct Mixer
+opaque struct Audio
+opaque struct Track
+
+// ## Lifecycle
+
+extern "MIX_Init" init() -> bool
+extern "MIX_Quit" quit()
+extern "MIX_Version" version() -> i32
+
+// ## The mixer, which owns a device
+
+extern "MIX_CreateMixerDevice" create_mixer_device(devid: u32, spec: *AudioSpec) -> *Mixer
+extern "MIX_DestroyMixer" destroy_mixer(mixer: *Mixer)
+extern "MIX_GetMixerGain" get_mixer_gain(mixer: *Mixer) -> f32
+extern "MIX_SetMixerGain" set_mixer_gain(mixer: *Mixer, gain: f32) -> bool
+extern "MIX_StopAllTracks" stop_all_tracks(mixer: *Mixer, fade_out_ms: i64) -> bool
+extern "MIX_PauseAllTracks" pause_all_tracks(mixer: *Mixer) -> bool
+extern "MIX_ResumeAllTracks" resume_all_tracks(mixer: *Mixer) -> bool
+
+// ## Loaded sounds
+
+extern "MIX_LoadAudio" load_audio(mixer: *Mixer, path: *u8, predecode: bool) -> *Audio
+extern "MIX_LoadRawAudio" load_raw_audio(mixer: *Mixer, data: *u8, len: usize,
+                                         spec: *AudioSpec) -> *Audio
+extern "MIX_CreateSineWaveAudio" create_sine_wave_audio(mixer: *Mixer, hz: i32, amplitude: f32,
+                                                        ms: i64) -> *Audio
+extern "MIX_DestroyAudio" destroy_audio(audio: *Audio)
+extern "MIX_GetAudioDuration" get_audio_duration(audio: *Audio) -> i64
+extern "MIX_GetAudioFormat" get_audio_format(audio: *Audio, spec: *AudioSpec) -> bool
+extern "MIX_AudioMSToFrames" audio_ms_to_frames(audio: *Audio, ms: i64) -> i64
+extern "MIX_AudioFramesToMS" audio_frames_to_ms(audio: *Audio, frames: i64) -> i64
+
+extern "MIX_PlayAudio" play_audio(mixer: *Mixer, audio: *Audio) -> bool
+
+// ## Tracks, which are playback voices
+
+extern "MIX_CreateTrack" create_track(mixer: *Mixer) -> *Track
+extern "MIX_DestroyTrack" destroy_track(track: *Track)
+extern "MIX_SetTrackAudio" set_track_audio(track: *Track, audio: *Audio) -> bool
+extern "MIX_PlayTrack" play_track(track: *Track, options: u32) -> bool
+extern "MIX_StopTrack" stop_track(track: *Track, fade_out_frames: i64) -> bool
+extern "MIX_PauseTrack" pause_track(track: *Track) -> bool
+extern "MIX_ResumeTrack" resume_track(track: *Track) -> bool
+extern "MIX_TrackPlaying" track_playing(track: *Track) -> bool
+extern "MIX_TrackPaused" track_paused(track: *Track) -> bool
+extern "MIX_SetTrackGain" set_track_gain(track: *Track, gain: f32) -> bool
+extern "MIX_GetTrackGain" get_track_gain(track: *Track) -> f32
+extern "MIX_SetTrackLoops" set_track_loops(track: *Track, loops: i32) -> bool
+extern "MIX_GetTrackLoops" get_track_loops(track: *Track) -> i32
+extern "MIX_SetTrackFrequencyRatio" set_track_frequency_ratio(track: *Track, ratio: f32) -> bool
+extern "MIX_GetTrackFrequencyRatio" get_track_frequency_ratio(track: *Track) -> f32
+extern "MIX_SetTrackPlaybackPosition" set_track_playback_position(track: *Track,
+                                                                  frames: i64) -> bool
+extern "MIX_GetTrackPlaybackPosition" get_track_playback_position(track: *Track) -> i64
+extern "MIX_GetTrackRemaining" get_track_remaining(track: *Track) -> i64
+extern "MIX_TrackMSToFrames" track_ms_to_frames(track: *Track, ms: i64) -> i64
+extern "MIX_TrackFramesToMS" track_frames_to_ms(track: *Track, frames: i64) -> i64
