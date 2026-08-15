@@ -1,7 +1,7 @@
 // SDL_mixer 3 — sound and music, mixed, for sysl.
 //
 //     dependencies {
-//       sdl3-mixer { git = "github.com/sysl-lang/sdl3-mixer", version = "0.2.0" }
+//       sdl3-mixer { git = "github.com/sysl-lang/sdl3-mixer", version = "0.2.1" }
 //     }
 //
 // **SDL3 and SDL3_mixer both have to be installed** — `brew install sdl3_ttf` pulls both — and a
@@ -18,16 +18,33 @@
 
 package {
   name    = "sdl3-mixer"
-  version = "0.2.0"
+  version = "0.2.1"
 }
 
 // The core binding, for `Color`, `Surface`, `Renderer` and `Texture`. It is fetched by the
 // coordinate below, so nothing has to be checked out beside this repository.
 dependencies {
-  sdl3 { git = "github.com/sysl-lang/sdl3", version = "0.2.0" }
+  sdl3 { git = "github.com/sysl-lang/sdl3", version = "0.2.1" }
 }
 
 requires {
   heap  = true
   posix = true
+
+  // `sh.sysl.sdl3_mixer.c` asks the C compiler for SDL_mixer's constants rather than transcribing them,
+  // so the headers are read at compile time and not only at link time — and `@link("SDL_mixer")` needs
+  // the library itself at the end of it. SDL_mixer ships a `sdl3-mixer.pc` that answers both, so the machine
+  // is asked and the consumer types nothing.
+  //
+  // **This package declared no requirement at all until 0.2.1**, which meant a consumer without
+  // SDL_mixer installed met clang reporting a header they had never heard of, and this file said
+  // nothing. So this is a new declaration rather than a swap of the `headers` key its siblings had.
+  //
+  // The name is pkg-config's: the module is `sh.sysl.sdl3_mixer`, the link directive says `SDL_mixer`,
+  // and pkg-config files it as `sdl3-mixer`. Three spellings, none derivable from the others.
+  //
+  // `sdl3` itself is not named here — it is a dependency and its own manifest declares it.
+  pkg_config {
+    sdl3-mixer = "SDL_mixer — `brew install sdl3_mixer` on macOS, Debian's libsdl3-mixer-dev, and pkg-config finds it either way"
+  }
 }
