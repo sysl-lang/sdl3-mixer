@@ -31,10 +31,12 @@ requires {
   heap  = true
   posix = true
 
-  // `sh.sysl.sdl3_mixer.c` asks the C compiler for SDL_mixer's constants rather than transcribing them,
-  // so the headers are read at compile time and not only at link time — and `@link("SDL_mixer")` needs
-  // the library itself at the end of it. SDL_mixer ships a `sdl3-mixer.pc` that answers both, so the machine
-  // is asked and the consumer types nothing.
+  // **This package transcribes no constants and reads no header**: it holds `extern` declarations and
+  // nothing else, so there is no `c const` block and no `@include` here — SDL_mixer's whole surface is
+  // functions. What it needs is the **library**, at link time, for `@link("SDL_mixer")` to resolve.
+  //
+  // SDL_mixer ships a `sdl3-mixer.pc`, so naming it here gets the link line from pkg-config and the consumer
+  // types nothing. The include half of the answer is along for the ride and costs nothing.
   //
   // **This package declared no requirement at all until 0.2.1**, which meant a consumer without
   // SDL_mixer installed met clang reporting a header they had never heard of, and this file said

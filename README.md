@@ -33,12 +33,15 @@ main()
 
 ```
 brew install sdl3_mixer                 # pulls sdl3 with it
-sysl run prog.sysl --include-path sdl3=/opt/homebrew/include --link-path /opt/homebrew/lib
+sysl run prog.sysl
 ```
 
-The two flags are deliberate — see [`sdl3`](https://github.com/sysl-lang/sdl3)'s README, which also
-says why this is a separate package rather than a module inside that one. The include path is named
-`sdl3=` because it answers *that* package's header requirement; this one declares none of its own.
+No flags — see [`sdl3`](https://github.com/sysl-lang/sdl3)'s README, which also says why this is a
+separate package rather than a module inside that one.
+
+Like `sdl3-image`, this package transcribes no constants and reads no header; what it needs is the
+**library**, at link time. Until 0.2.1 it said nothing about that, so a machine without SDL_mixer
+found out from the linker. It names it now. **Needs sysl 0.0.56.**
 
 ## Two layers, and handles that own themselves
 
@@ -112,7 +115,7 @@ both ends, which means generating the samples and handing them to `load_raw`.
 ## Tests
 
 ```
-sysl test . --include-path sdl3=/opt/homebrew/include --link-path /opt/homebrew/lib
+sysl test .
 ```
 
 Thirteen tests, and **they need no sound card and no sound file**. SDL's dummy audio driver accepts
