@@ -1,8 +1,7 @@
 module sh.sysl.sdl3_mixer
 @tests
 
-import sh.sysl.sdl3.{AudioFormat, INIT_AUDIO, init, quit, set_hint}
-import sh.sysl.sdl3.c.AudioSpec
+import sh.sysl.sdl3.{AudioFormat, AudioSpec, INIT_AUDIO, init, quit, set_hint}
 import sysl.buf.{Buf, buf}
 import sysl.slices.as_ptr
 

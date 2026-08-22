@@ -3,9 +3,8 @@ module sh.sysl.sdl3_mixer
 import sh.sysl.sdl3_mixer.c
 import sysl.text.cstring
 import sysl.slices.as_ptr
-import sh.sysl.sdl3.{AUDIO_DEVICE_DEFAULT_PLAYBACK, create_properties, destroy_properties,
-                     set_number_property}
-import sh.sysl.sdl3.c.AudioSpec
+import sh.sysl.sdl3.{AUDIO_DEVICE_DEFAULT_PLAYBACK, AudioSpec, create_properties,
+                     destroy_properties, set_number_property}
 
 // SDL_mixer 3 — sound and music, mixed, looped, faded and stopped.
 //
