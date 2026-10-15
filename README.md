@@ -2,6 +2,8 @@
 
 SDL_mixer 3 for sysl — sound and music, mixed, looped, faded and stopped.
 
+*An independent sysl package for SDL_mixer. It is not affiliated with or endorsed by SDL_mixer's authors or trademark holders.*
+
 ```
 dependencies {
   sdl3       { git = "github.com/sysl-lang/sdl3",       version = "0.3.6" }
