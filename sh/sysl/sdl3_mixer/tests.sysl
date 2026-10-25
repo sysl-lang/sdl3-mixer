@@ -4,6 +4,7 @@ module sh.sysl.sdl3_mixer
 import sh.sysl.sdl3.{AudioFormat, AudioSpec, INIT_AUDIO, init, quit, set_hint}
 import sysl.buf.{Buf, buf}
 import sysl.slices.as_ptr
+import sysl.raw.ptr_cast
 
 // The package's own tests, against a real SDL3_mixer.
 //
